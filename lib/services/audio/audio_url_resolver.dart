@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../../models/track.dart';
 import 'des_cipher.dart';
@@ -17,10 +18,12 @@ class AudioUrlResolver {
     connectTimeout: const Duration(seconds: 4),
     receiveTimeout: const Duration(seconds: 4),
     sendTimeout: const Duration(seconds: 3),
-    headers: {
-      'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    },
+    headers: kIsWeb
+        ? null
+        : {
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          },
   ));
 
   // Search API mirrors for re-search fallback (excludes saavn-api search which returns static Hindi songs)
@@ -34,22 +37,16 @@ class AudioUrlResolver {
   Future<String?> resolveAudioUrl(Track track, {bool forceFresh = false}) async {
     print('[AURA-RESOLVER] resolveAudioUrl for: "${track.title}" (id: ${track.id}) forceFresh=$forceFresh');
 
-    // Strategy 0: YouTube Track direct resolution
-    if (_isYouTubeTrack(track)) {
-      final videoId = YouTubeAudioResolver.extractVideoId(track.id) ??
-          YouTubeAudioResolver.extractVideoId(track.audioUrl) ??
-          track.id.replaceAll('yt_', '');
-      if (videoId.isNotEmpty) {
-        final ytUrl = await YouTubeAudioResolver.instance.resolve(videoId);
-        if (ytUrl != null && ytUrl.isNotEmpty) {
-          print('[AURA-RESOLVER] Strategy 0 SUCCESS: Resolved YouTube stream: $ytUrl');
-          return ytUrl;
-        }
+    // Strategy 0: YouTube Track resolution via Innertube / Piped
+    if (track.id.startsWith('yt_') || track.audioUrl.contains('youtube.com') || track.audioUrl.contains('youtu.be')) {
+      final resolved = await YouTubeAudioResolver.resolveAudioStreamUrl(track.id, fallbackVideoUrl: track.audioUrl);
+      if (resolved != null && resolved.isNotEmpty) {
+        return resolved;
       }
     }
 
     // Strategy 1: Direct Song ID lookup on official JioSaavn API with DES decryption
-    if (track.id.isNotEmpty && !track.id.startsWith('yt_')) {
+    if (track.id.isNotEmpty) {
       final songByIdUrl = await _tryGetSongById(track.id);
       if (songByIdUrl != null) {
         print('[AURA-RESOLVER] Strategy 1 SUCCESS: Got live decrypted URL from song ID lookup');
@@ -79,19 +76,7 @@ class AudioUrlResolver {
       }
     }
 
-    // Strategy 4: Fallback to YouTube audio stream if song is not available on JioSaavn
-    try {
-      print('[AURA-RESOLVER] Strategy 4: Fallback searching YouTube for "${track.title} ${track.artist}"');
-      final ytFallbackUrl = await YouTubeAudioResolver.instance.resolveByQuery('${track.title} ${track.artist}');
-      if (ytFallbackUrl != null && ytFallbackUrl.isNotEmpty) {
-        print('[AURA-RESOLVER] Strategy 4 SUCCESS: Resolved via YouTube audio stream: $ytFallbackUrl');
-        return ytFallbackUrl;
-      }
-    } catch (e) {
-      print('[AURA-RESOLVER] Strategy 4 YouTube fallback error: $e');
-    }
-
-    // Strategy 5: Return original URL as last resort if not forceFresh
+    // Strategy 4: Return original URL as last resort if not forceFresh
     if (!forceFresh && track.audioUrl.startsWith('http')) {
       print('[AURA-RESOLVER] Returning original URL as last resort');
       String url = track.audioUrl;
@@ -105,25 +90,12 @@ class AudioUrlResolver {
     return null;
   }
 
-  /// Checks if a track originates from YouTube
-  bool _isYouTubeTrack(Track track) {
-    return track.id.startsWith('yt_') ||
-        track.audioUrl.startsWith('yt://') ||
-        track.audioUrl.contains('googlevideo.com') ||
-        track.audioUrl.contains('youtube.com') ||
-        track.audioUrl.contains('youtu.be') ||
-        track.genre.toLowerCase() == 'youtube' ||
-        track.album.toLowerCase() == 'youtube';
-  }
-
   /// Resolves audio URLs for a list of tracks (batch).
   Future<List<Track>> resolveAll(List<Track> tracks) async {
     if (tracks.isEmpty) return [];
     final List<Track> resolved = [];
     for (final track in tracks) {
-      if (_isYouTubeTrack(track)) {
-        resolved.add(track);
-      } else if (_isDirectCdnLink(track.audioUrl) && !track.audioUrl.contains('_320.')) {
+      if (_isDirectCdnLink(track.audioUrl) && !track.audioUrl.contains('_320.')) {
         resolved.add(track);
       } else {
         final url = await resolveAudioUrl(track);
@@ -140,29 +112,31 @@ class AudioUrlResolver {
   // ── Strategy 1: Direct JioSaavn API Song ID Lookup + DES Decryption ──────────────
 
   Future<String?> _tryGetSongById(String trackId) async {
-    // 1. Primary: Direct JioSaavn official API + DES Decryption
-    try {
-      final directUrl = 'https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${Uri.encodeComponent(trackId)}&_format=json&_marker=0&api_version=4';
-      print('[AURA-RESOLVER] Trying direct JioSaavn API: $directUrl');
-      final response = await _dio.get(directUrl);
-      if (response.statusCode == 200 && response.data != null) {
-        dynamic data = response.data;
-        if (data is String) {
-          try { data = jsonDecode(data); } catch (_) {}
-        }
-        final cdnUrl = _extractAndDecryptFromJioSaavnData(data, trackId);
-        if (cdnUrl != null && cdnUrl.isNotEmpty) {
-          if (await _isUrlPlayable(cdnUrl)) {
-            print('[AURA-RESOLVER] ✓ Official JioSaavn DES Decrypted URL verified: $cdnUrl');
-            return cdnUrl;
+    // 1. Primary: Direct JioSaavn official API + DES Decryption (skip on web due to CORS)
+    if (!kIsWeb) {
+      try {
+        final directUrl = 'https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${Uri.encodeComponent(trackId)}&_format=json&_marker=0&api_version=4';
+        print('[AURA-RESOLVER] Trying direct JioSaavn API: $directUrl');
+        final response = await _dio.get(directUrl);
+        if (response.statusCode == 200 && response.data != null) {
+          dynamic data = response.data;
+          if (data is String) {
+            try { data = jsonDecode(data); } catch (_) {}
+          }
+          final cdnUrl = _extractAndDecryptFromJioSaavnData(data, trackId);
+          if (cdnUrl != null && cdnUrl.isNotEmpty) {
+            if (await _isUrlPlayable(cdnUrl)) {
+              print('[AURA-RESOLVER] ✓ Official JioSaavn DES Decrypted URL verified: $cdnUrl');
+              return cdnUrl;
+            }
           }
         }
+      } catch (e) {
+        print('[AURA-RESOLVER] Direct JioSaavn API error: $e');
       }
-    } catch (e) {
-      print('[AURA-RESOLVER] Direct JioSaavn API error: $e');
     }
 
-    // 2. Secondary: Fallback Vercel API mirrors
+    // 2. Secondary: Fallback Vercel API mirrors (CORS enabled)
     final endpoints = [
       'https://saavn.sumit.co/api/songs?ids=$trackId',
       'https://jiosaavn-api-beta.vercel.app/songs?id=$trackId',
@@ -222,35 +196,37 @@ class AudioUrlResolver {
       queries.add(track.title.trim());
     }
 
-    // 1. Try official JioSaavn autocomplete search first
-    for (final q in queries) {
-      try {
-        final autoUrl = 'https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${Uri.encodeComponent(q)}&_format=json&_marker=0';
-        print('[AURA-RESOLVER] Searching official JioSaavn API for "$q"');
-        final response = await _dio.get(autoUrl);
-        if (response.statusCode == 200 && response.data != null) {
-          dynamic data = response.data;
-          if (data is String) {
-            try { data = jsonDecode(data); } catch (_) {}
-          }
-          if (data is Map && data['songs'] is Map && data['songs']['data'] is List) {
-            final songList = data['songs']['data'] as List;
-            for (final item in songList) {
-              if (item is Map && item['id'] != null) {
-                final matchedId = item['id'].toString();
-                final url = await _tryGetSongById(matchedId);
-                if (url != null && !candidates.contains(url)) {
-                  candidates.add(url);
+    // 1. Try official JioSaavn autocomplete search first (skip on web due to CORS)
+    if (!kIsWeb) {
+      for (final q in queries) {
+        try {
+          final autoUrl = 'https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${Uri.encodeComponent(q)}&_format=json&_marker=0';
+          print('[AURA-RESOLVER] Searching official JioSaavn API for "$q"');
+          final response = await _dio.get(autoUrl);
+          if (response.statusCode == 200 && response.data != null) {
+            dynamic data = response.data;
+            if (data is String) {
+              try { data = jsonDecode(data); } catch (_) {}
+            }
+            if (data is Map && data['songs'] is Map && data['songs']['data'] is List) {
+              final songList = data['songs']['data'] as List;
+              for (final item in songList) {
+                if (item is Map && item['id'] != null) {
+                  final matchedId = item['id'].toString();
+                  final url = await _tryGetSongById(matchedId);
+                  if (url != null && !candidates.contains(url)) {
+                    candidates.add(url);
+                  }
                 }
+                if (candidates.length >= 3) break;
               }
-              if (candidates.length >= 3) break;
             }
           }
+        } catch (e) {
+          print('[AURA-RESOLVER] Official JioSaavn autocomplete search error: $e');
         }
-      } catch (e) {
-        print('[AURA-RESOLVER] Official JioSaavn autocomplete search error: $e');
+        if (candidates.isNotEmpty) return candidates;
       }
-      if (candidates.isNotEmpty) return candidates;
     }
 
     // 2. Fallback to Vercel API mirrors if official autocomplete returned nothing
@@ -294,6 +270,13 @@ class AudioUrlResolver {
   };
 
   Future<bool> _isUrlPlayable(String url) async {
+    if (kIsWeb) {
+      // In browsers, XHR/Dio cannot make cross-origin requests to saavncdn.com without CORS headers,
+      // and cannot set forbidden headers ('User-Agent', 'Referer'). The browser's native HTML5 <audio>
+      // element streams cross-origin media directly without these restrictions.
+      return url.isNotEmpty && (url.startsWith('http://') || url.startsWith('https://'));
+    }
+
     try {
       final response = await _dio.head(
         url,

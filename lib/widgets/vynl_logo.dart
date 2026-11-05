@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// VYNL App Logo Widget
-/// Renders the geometric neon V logo.
+/// Renders the sleek white geometric origami V logo.
 class VynlLogo extends StatelessWidget {
   final double size;
   final Color? color;
@@ -24,11 +24,11 @@ class VynlLogo extends StatelessWidget {
       height: size,
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
-        // Fallback custom vector painter of the geometric V symbol
+        // Fallback custom vector painter of the origami geometric V symbol
         return CustomPaint(
           size: Size(size, size),
           painter: VynlGeometricPainter(
-            color: color ?? const Color(0xFFB8E11B),
+            color: color ?? Colors.white,
           ),
         );
       },
@@ -40,16 +40,16 @@ class VynlLogo extends StatelessWidget {
         height: size + 16,
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E224A),
+          color: const Color(0xFF10192E),
           borderRadius: BorderRadius.circular(borderRadius),
           border: Border.all(
-            color: const Color(0xFF38407A).withValues(alpha: 0.6),
+            color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
             width: 1.2,
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFB8E11B).withValues(alpha: 0.15),
-              blurRadius: 12,
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.18),
+              blurRadius: 14,
               offset: const Offset(0, 4),
             ),
           ],
@@ -62,7 +62,7 @@ class VynlLogo extends StatelessWidget {
   }
 }
 
-/// Custom vector painter that renders the geometric V logo
+/// Custom vector painter that renders the geometric origami V logo
 class VynlGeometricPainter extends CustomPainter {
   final Color color;
 
@@ -70,44 +70,36 @@ class VynlGeometricPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final strokeWidth = size.width * 0.085;
     final paint = Paint()
       ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
 
     final w = size.width;
     final h = size.height;
 
-    // Bottom apex
-    final apex = Offset(w * 0.5, h * 0.88);
+    // Left folded wing
+    final leftPath = Path()
+      ..moveTo(w * 0.14, h * 0.18)
+      ..lineTo(w * 0.48, h * 0.18)
+      ..lineTo(w * 0.34, h * 0.44)
+      ..lineTo(w * 0.22, h * 0.26)
+      ..lineTo(w * 0.50, h * 0.86)
+      ..lineTo(w * 0.14, h * 0.18)
+      ..close();
+    canvas.drawPath(leftPath, paint);
 
-    // Center vertical stem
-    canvas.drawLine(Offset(w * 0.5, h * 0.55), apex, paint);
-
-    // Main V chevron left and right
-    final pathMainV = Path()
-      ..moveTo(w * 0.32, h * 0.22)
-      ..lineTo(w * 0.32, h * 0.35)
-      ..lineTo(apex.dx, apex.dy)
-      ..lineTo(w * 0.68, h * 0.35)
-      ..lineTo(w * 0.68, h * 0.22);
-    canvas.drawPath(pathMainV, paint);
-
-    // Outer branching prongs
-    final pathOuterLeft = Path()
-      ..moveTo(w * 0.18, h * 0.26)
-      ..lineTo(w * 0.18, h * 0.38)
-      ..lineTo(w * 0.45, h * 0.78);
-    canvas.drawPath(pathOuterLeft, paint);
-
-    final pathOuterRight = Path()
-      ..moveTo(w * 0.82, h * 0.26)
-      ..lineTo(w * 0.82, h * 0.38)
-      ..lineTo(w * 0.55, h * 0.78);
-    canvas.drawPath(pathOuterRight, paint);
+    // Right folded wing
+    final rightPath = Path()
+      ..moveTo(w * 0.86, h * 0.18)
+      ..lineTo(w * 0.52, h * 0.18)
+      ..lineTo(w * 0.38, h * 0.46)
+      ..lineTo(w * 0.50, h * 0.70)
+      ..lineTo(w * 0.72, h * 0.26)
+      ..lineTo(w * 0.58, h * 0.54)
+      ..lineTo(w * 0.86, h * 0.18)
+      ..close();
+    canvas.drawPath(rightPath, paint);
   }
 
   @override

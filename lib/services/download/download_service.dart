@@ -1,9 +1,10 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../storage/storage_service.dart';
-import '../audio/audio_url_resolver.dart';
+import '../music_sources/source_manager.dart';
 import '../../models/track.dart';
 
 class DownloadTask {
@@ -42,24 +43,18 @@ class DownloadService extends ChangeNotifier {
   Map<String, DownloadTask> get tasks => _tasks;
 
   List<Track> getDownloadedTracksList() {
+    if (kIsWeb) return [];
     return StorageService.getFullDownloadedTracks();
   }
 
   bool isDownloaded(String trackId) {
-    final localPath = getLocalPath(trackId);
-    if (localPath == null) return false;
-    final file = File(localPath);
-    return file.existsSync() && file.lengthSync() > 0;
+    if (kIsWeb) return false;
+    return StorageService.isTrackDownloaded(trackId);
   }
 
   String? getLocalPath(String trackId) {
-    final mapped = StorageService.getDownloadedTracks();
-    if (!mapped.containsKey(trackId)) return null;
-    final file = File(mapped[trackId]!);
-    if (file.existsSync() && file.lengthSync() > 0) {
-      return file.path;
-    }
-    return null;
+    if (kIsWeb) return null;
+    return StorageService.getDownloadedTrackPath(trackId);
   }
 
   // ── Download Actions ────────────────────────────────────────
@@ -80,7 +75,8 @@ class DownloadService extends ChangeNotifier {
         await folder.create(recursive: true);
       }
 
-      final localPath = '${folder.path}/${track.id}.mp4';
+      final ext = track.isYouTube ? 'm4a' : 'mp4';
+      final localPath = '${folder.path}/${track.id}.$ext';
       final artworkLocalPath = '${folder.path}/${track.id}_cover.jpg';
 
       // Download cover art image if URL is valid remote HTTP/HTTPS
@@ -103,24 +99,11 @@ class DownloadService extends ChangeNotifier {
 
       // Download audio URL
       String url = track.audioUrl;
-      if (url.isEmpty ||
-          url.startsWith('file://') ||
-          url.startsWith('yt://') ||
-          url.contains('saavncdn.com') ||
-          url.contains('googlevideo.com')) {
+      if (url.isEmpty || url.startsWith('file://') || url.contains('saavncdn.com')) {
         try {
-          final resolved = await AudioUrlResolver.instance.resolveAudioUrl(track, forceFresh: false);
+          final resolved = await SourceManager.instance.getStreamUrl(track);
           if (resolved != null && resolved.isNotEmpty) {
             url = resolved;
-          }
-        } catch (_) {}
-      }
-
-      if (url.isEmpty) {
-        try {
-          final resolvedFresh = await AudioUrlResolver.instance.resolveAudioUrl(track, forceFresh: true);
-          if (resolvedFresh != null && resolvedFresh.isNotEmpty) {
-            url = resolvedFresh;
           }
         } catch (_) {}
       }
@@ -129,26 +112,10 @@ class DownloadService extends ChangeNotifier {
         throw Exception('Audio URL not available');
       }
 
-      final downloadHeaders = (url.contains('googlevideo.com') ||
-              url.contains('youtube.com') ||
-              url.contains('youtu.be') ||
-              url.contains('piped') ||
-              url.contains('invidious'))
-          ? {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            }
-          : {
-              'User-Agent':
-                  'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-              'Referer': 'https://www.jiosaavn.com/',
-            };
-
       await _dio.download(
         url,
         localPath,
         cancelToken: cancelToken,
-        options: Options(headers: downloadHeaders),
         onReceiveProgress: (received, total) {
           if (total != -1) {
             final progress = (received / total).clamp(0.0, 1.0);
@@ -173,9 +140,10 @@ class DownloadService extends ChangeNotifier {
         notifyListeners();
       });
     } catch (e) {
-      if (CancelToken.isCancel(e as DioException)) {
+      if (e is DioException && CancelToken.isCancel(e)) {
         _tasks.remove(track.id);
       } else {
+        print('[DOWNLOAD] Error downloading "${track.title}": $e');
         _tasks[track.id] = task.copyWith(status: 'failed');
       }
       notifyListeners();

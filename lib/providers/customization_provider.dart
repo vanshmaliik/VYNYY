@@ -40,16 +40,30 @@ class CustomizationState {
 
   Color get accentColor => Color.fromARGB(255, red, green, blue);
 
-  IconData get brandingIcon => IconData(brandingIconCode, fontFamily: 'MaterialIcons');
+  IconData get brandingIcon {
+    switch (brandingIconCode) {
+      case 0xe410:
+        return Icons.music_note_rounded;
+      case 0xe3a1:
+        return Icons.library_music_rounded;
+      case 0xe25b:
+        return Icons.favorite_rounded;
+      case 0xe229:
+        return Icons.equalizer_rounded;
+      case 0xe056:
+      default:
+        return Icons.album_rounded;
+    }
+  }
 }
 
 class CustomizationNotifier extends Notifier<CustomizationState> {
-  // VYNL Defaults
+  // VYNL Light Bluish Defaults
   static const String _defaultAppName = 'VYNL';
   static const int _defaultIconCode = 0xe056; // album_rounded
-  static const int _defaultR = 99;  // Electric Blueish / Indigo R (Image 1 palette)
-  static const int _defaultG = 102; // Electric Blueish / Indigo G
-  static const int _defaultB = 241; // Electric Blueish / Indigo B
+  static const int _defaultR = 56;  // Light Bluish R
+  static const int _defaultG = 189; // Light Bluish G
+  static const int _defaultB = 248; // Light Bluish B
   static const String _defaultNavBarStyle = 'vynl_fluid';
 
   @override

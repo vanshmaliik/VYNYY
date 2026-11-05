@@ -51,11 +51,6 @@ class VoiceSearchService {
       RegExp(r'(^|\s+)with\s+aura$'),
       RegExp(r'(^|\s+)using\s+aura$'),
       RegExp(r'^aura\s+play\s+'),
-      RegExp(r'(^|\s+)in\s+vynl$'),
-      RegExp(r'(^|\s+)on\s+vynl$'),
-      RegExp(r'(^|\s+)with\s+vynl$'),
-      RegExp(r'(^|\s+)using\s+vynl$'),
-      RegExp(r'^vynl\s+play\s+'),
     ];
 
     for (final pattern in patterns) {
@@ -207,7 +202,7 @@ class VoiceSearchService {
           type: VoiceSearchResultType.resume,
           query: rawQuery,
           queue: localTracks,
-          message: 'Playing your Aura music library',
+          message: 'Playing your VYNL music library',
         );
       } else {
         return VoiceSearchResult(
@@ -308,7 +303,7 @@ class VoiceSearchService {
     return VoiceSearchResult(
       type: VoiceSearchResultType.noMatch,
       query: rawQuery,
-      message: 'Couldn\'t find "$rawQuery" in Aura',
+      message: 'Couldn\'t find "$rawQuery" in VYNL',
     );
   }
 

@@ -7,6 +7,9 @@ class Track {
   final String artworkUrl;
   final String audioUrl;
   final String genre;
+  final String source;
+  final String? youtubeVideoId;
+  final String? addedBy;
 
   const Track({
     required this.id,
@@ -17,7 +20,18 @@ class Track {
     required this.artworkUrl,
     required this.audioUrl,
     required this.genre,
+    this.source = 'jiosaavn',
+    this.youtubeVideoId,
+    this.addedBy,
   });
+
+  bool get isYouTube =>
+      source == 'youtube' ||
+      (youtubeVideoId != null && youtubeVideoId!.isNotEmpty) ||
+      id.startsWith('yt_') ||
+      audioUrl.contains('googlevideo.com');
+
+  bool get isJioSaavn => !isYouTube && (source == 'jiosaavn' || source.isEmpty);
 
   Track copyWith({
     String? id,
@@ -28,6 +42,9 @@ class Track {
     String? artworkUrl,
     String? audioUrl,
     String? genre,
+    String? source,
+    String? youtubeVideoId,
+    String? addedBy,
   }) {
     return Track(
       id: id ?? this.id,
@@ -38,6 +55,9 @@ class Track {
       artworkUrl: artworkUrl ?? this.artworkUrl,
       audioUrl: audioUrl ?? this.audioUrl,
       genre: genre ?? this.genre,
+      source: source ?? this.source,
+      youtubeVideoId: youtubeVideoId ?? this.youtubeVideoId,
+      addedBy: addedBy ?? this.addedBy,
     );
   }
 
@@ -50,18 +70,40 @@ class Track {
         'artworkUrl': artworkUrl,
         'audioUrl': audioUrl,
         'genre': genre,
+        'source': isYouTube ? 'youtube' : (source.isNotEmpty ? source : 'jiosaavn'),
+        'youtubeVideoId': youtubeVideoId ?? (id.startsWith('yt_') ? id.substring(3) : null),
+        if (addedBy != null && addedBy!.isNotEmpty) 'addedBy': addedBy,
       };
 
   factory Track.fromJson(Map<String, dynamic> json) {
+    final trackId = json['id'] as String? ?? '';
+    final ytId = json['youtubeVideoId'] as String?;
+    final aUrl = json['audioUrl'] as String? ?? '';
+    String src = json['source'] as String? ?? '';
+
+    // Infer source if missing or ambiguous
+    if (src.isEmpty || src == 'jiosaavn') {
+      if (trackId.startsWith('yt_') || (ytId != null && ytId.isNotEmpty) || aUrl.contains('googlevideo.com')) {
+        src = 'youtube';
+      } else {
+        src = 'jiosaavn';
+      }
+    }
+
+    final inferredYtId = ytId ?? (trackId.startsWith('yt_') ? trackId.substring(3) : null);
+
     return Track(
-      id: json['id'] as String? ?? '',
+      id: trackId,
       title: json['title'] as String? ?? 'Unknown Title',
       artist: json['artist'] as String? ?? 'Unknown Artist',
       album: json['album'] as String? ?? '',
       duration: json['duration'] as String? ?? '3:30',
       artworkUrl: json['artworkUrl'] as String? ?? '',
-      audioUrl: json['audioUrl'] as String? ?? '',
+      audioUrl: aUrl,
       genre: json['genre'] as String? ?? '',
+      source: src,
+      youtubeVideoId: inferredYtId,
+      addedBy: json['addedBy'] as String?,
     );
   }
 

@@ -7,6 +7,9 @@ import '../../providers/customization_provider.dart';
 import '../../services/sharing/playlist_link_share_service.dart';
 import '../../themes/app_theme.dart';
 import '../handoff/nearby_share_screen.dart';
+import '../../services/storage/storage_service.dart';
+import '../../widgets/playlist_imported_dialog.dart';
+import '../../services/sync/playlist_cloud_sync_service.dart';
 
 class ShareOptionsModal extends ConsumerWidget {
   final List<Track> tracks;
@@ -28,6 +31,7 @@ class ShareOptionsModal extends ConsumerWidget {
   }) {
     return showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ShareOptionsModal(
         tracks: tracks,
@@ -43,15 +47,27 @@ class ShareOptionsModal extends ConsumerWidget {
     final accentColor = ref.watch(customizationProvider).accentColor;
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF18181C) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 18,
+            bottom: MediaQuery.of(context).padding.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           Center(
             child: Container(
               width: 40,
@@ -195,9 +211,375 @@ class ShareOptionsModal extends ConsumerWidget {
               ),
             ),
           ),
+          const SizedBox(height: 14),
+
+          // Option 3: Add / Import Playlist via Code or Link
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                Navigator.pop(context);
+                _showImportPlaylistBottomSheet(context, ref);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.playlist_add_rounded, color: accentColor, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Add / Import Playlist',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Enter code or paste shared link to add to your library',
+                            style: TextStyle(fontSize: 11.5, color: isDark ? Colors.white60 : Colors.black54),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
+                  ],
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
         ],
       ),
+    ),
+  ),
+);
+  }
+
+  static void _showImportPlaylistBottomSheet(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accentColor = ref.read(customizationProvider).accentColor;
+    final controller = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) {
+        bool isLoading = false;
+        String? errorMessage;
+
+        return StatefulBuilder(
+          builder: (sheetContext, setModalState) {
+            return Container(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 20,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1B1B1F) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white24 : Colors.black12,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: accentColor.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.playlist_add_rounded, color: accentColor, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Add Playlist 📥',
+                              style: TextStyle(
+                                fontFamily: 'Outfit',
+                                fontSize: 19,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Enter code or paste playlist link',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.white60 : Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: () => Navigator.pop(sheetContext),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Input TextField with Paste button
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 14,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. 7KX9Y2 or aura://share?dpc=...',
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white38 : Colors.black38,
+                      ),
+                      prefixIcon: Icon(Icons.link_rounded, color: accentColor, size: 20),
+                      suffixIcon: TextButton(
+                        onPressed: () async {
+                          final data = await Clipboard.getData(Clipboard.kTextPlain);
+                          if (data?.text != null && data!.text!.trim().isNotEmpty) {
+                            controller.text = data.text!.trim();
+                            setModalState(() {
+                              errorMessage = null;
+                            });
+                          }
+                        },
+                        child: Text(
+                          'PASTE',
+                          style: TextStyle(
+                            color: accentColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      filled: true,
+                      fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.black12),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.black12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: accentColor, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
+
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            errorMessage!,
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+
+                  // Submit Button
+                  ElevatedButton(
+                    onPressed: isLoading
+                        ? null
+                        : () async {
+                            final rawText = controller.text.trim();
+                            if (rawText.isEmpty) {
+                              setModalState(() {
+                                errorMessage = 'Please enter a playlist code or paste a link.';
+                              });
+                              return;
+                            }
+
+                            FocusScope.of(sheetContext).unfocus();
+
+                            setModalState(() {
+                              isLoading = true;
+                              errorMessage = null;
+                            });
+
+                            try {
+                              // 1. Attempt Cloud Share Code lookup (e.g. AURA-7K9X2B or bare code)
+                              final cloudByCode = await PlaylistCloudSyncService.instance.fetchPlaylistByShareCode(rawText);
+                              if (cloudByCode != null) {
+                                final List<Track> tracks = List<Track>.from(cloudByCode['tracks'] as List? ?? []);
+                                final newPl = {
+                                  'id': DateTime.now().millisecondsSinceEpoch.toString(),
+                                  'name': cloudByCode['name']?.toString() ?? 'Shared Playlist',
+                                  'description': cloudByCode['description']?.toString() ?? 'Imported via Playlist Code',
+                                  'authorName': cloudByCode['authorName']?.toString() ?? 'Community Member',
+                                  'ownerId': cloudByCode['ownerId']?.toString() ?? '',
+                                  'ownerEmail': cloudByCode['ownerEmail']?.toString() ?? '',
+                                  'ownerName': cloudByCode['authorName']?.toString() ?? '',
+                                  'isImported': true,
+                                  'isPublic': cloudByCode['isPublic'] == true,
+                                  'isSyncEnabled': cloudByCode['isSyncEnabled'] == true,
+                                  'shareCode': cloudByCode['shareCode']?.toString() ?? rawText.toUpperCase(),
+                                  'syncId': cloudByCode['syncId']?.toString(),
+                                  'trackIds': tracks.map((t) => t.id).toList(),
+                                  'syncedTrackIds': tracks.map((t) => t.id).toList(),
+                                  'tracks': tracks.map((t) => t.toJson()).toList(),
+                                };
+                                final playlists = StorageService.getPlaylists();
+                                playlists.insert(0, newPl);
+                                await StorageService.savePlaylists(playlists);
+
+                                final importEvent = PlaylistImportEvent(
+                                  title: newPl['name'].toString(),
+                                  description: newPl['description'].toString(),
+                                  trackCount: tracks.length,
+                                  tracks: tracks,
+                                  fromQrScan: false,
+                                );
+                                PlaylistLinkShareService.notifyImport(importEvent);
+
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                                if (context.mounted) {
+                                  PlaylistImportSuccessDialog.show(context, importEvent, ref);
+                                }
+                                return;
+                              }
+
+                              // 2. Attempt Aura Link or code decode
+                              final decoded = await PlaylistLinkShareService.instance.decodeShareableLinkAsync(rawText);
+                              if (decoded == null || decoded.tracks.isEmpty) {
+                                setModalState(() {
+                                  isLoading = false;
+                                  errorMessage = 'Could not find playlist. Please check your code or link.';
+                                });
+                                return;
+                              }
+
+                              final newPl = {
+                                'id': DateTime.now().millisecondsSinceEpoch.toString(),
+                                'name': decoded.title,
+                                'description': decoded.description.isNotEmpty
+                                    ? decoded.description
+                                    : 'Imported via Shared Code / Link',
+                                'trackIds': decoded.tracks.map((t) => t.id).toList(),
+                                'tracks': decoded.tracks.map((t) => t.toJson()).toList(),
+                              };
+                              final playlists = StorageService.getPlaylists();
+                              playlists.insert(0, newPl);
+                              await StorageService.savePlaylists(playlists);
+
+                              final importEvent = PlaylistImportEvent(
+                                title: decoded.title,
+                                description: decoded.description,
+                                trackCount: decoded.tracks.length,
+                                tracks: decoded.tracks,
+                                fromQrScan: false,
+                              );
+                              PlaylistLinkShareService.notifyImport(importEvent);
+
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
+
+                              // Show celebration popup
+                              if (context.mounted) {
+                                PlaylistImportSuccessDialog.show(context, importEvent, ref);
+                              }
+                            } catch (e) {
+                              setModalState(() {
+                                isLoading = false;
+                                errorMessage = 'Failed to load playlist: $e';
+                              });
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accentColor,
+                      disabledBackgroundColor: accentColor.withValues(alpha: 0.6),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 2,
+                    ),
+                    child: isLoading
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Adding Playlist...',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Text(
+                            'Add Playlist',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -376,26 +758,98 @@ class RemoteLinkShareModal extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(18),
                               border: Border.all(color: accentColor.withValues(alpha: 0.3)),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Ultra-Short Playlist Code / Link',
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  shareableLink,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'monospace',
-                                    color: accentColor,
-                                  ),
-                                ),
-                              ],
+                            child: Builder(
+                              builder: (context) {
+                                String shortCode = '';
+                                if (shareableLink.contains('dpc=')) {
+                                  shortCode = shareableLink.split('dpc=').last.split('&').first;
+                                } else if (shareableLink.contains('dp=')) {
+                                  shortCode = shareableLink.split('dp=').last.split('&').first;
+                                }
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (shortCode.isNotEmpty) ...[
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'Playlist Code: ',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: accentColor.withValues(alpha: 0.15),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+                                            ),
+                                            child: Text(
+                                              shortCode,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                fontFamily: 'monospace',
+                                                color: accentColor,
+                                              ),
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          InkWell(
+                                            borderRadius: BorderRadius.circular(8),
+                                            onTap: () {
+                                              Clipboard.setData(ClipboardData(text: shortCode));
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Copied playlist code: $shortCode'),
+                                                  duration: const Duration(seconds: 2),
+                                                  behavior: SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                            },
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(4),
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.copy_rounded, size: 13, color: accentColor),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Copy Code',
+                                                    style: TextStyle(
+                                                      fontSize: 11.5,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: accentColor,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      const Divider(height: 1, color: Colors.white10),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    const Text(
+                                      'Full Shareable Link',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      shareableLink,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'monospace',
+                                        color: accentColor,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ),
 

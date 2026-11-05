@@ -11,11 +11,6 @@
 
 ## ✨ Key Features & Capabilities
 
-### 🎵 Dual Music Engine: JioSaavn & YouTube Integration
-- **Hybrid Streaming Catalog**: Seamlessly search and stream music from both JioSaavn and YouTube.
-- **Never Miss a Song**: Any track unavailable on JioSaavn is automatically located and streamed via YouTube.
-- **Configurable Streaming Source**: Easily toggle between Hybrid Mode, YouTube Only, or JioSaavn Only in Settings.
-
 ### 🔗 Playlist Link Sharing & One-Click Importing
 - **Deep Link Generation**: Generate shareable `aura://` or `aura-playlist://` deep links or web URLs (`auramusic.app`).
 - **One-Click Playlist Import**: Share playlists directly to WhatsApp, Telegram, or Messages. Tapping a shared link automatically imports the full playlist into the recipient's Aura Library.
@@ -67,15 +62,15 @@
 
 ## 📲 Downloads & Releases
 
-Pre-built binaries for all major platforms are available on the [Releases](https://github.com/vanshmaliik/Aura_Music/releases) page:
+Pre-built binaries for all major platforms are available on the [Releases](https://github.com/vanshmaliik/VYNYY/releases) page:
 
 | Platform | Format | Status |
 |---|---|---|
-| **Android** | `.apk` | [Download Release](https://github.com/vanshmaliik/Aura_Music/releases) |
-| **iOS** | `.ipa` | [Download Release](https://github.com/vanshmaliik/Aura_Music/releases) |
-| **Windows** | `.zip` (`.exe`) | [Download Release](https://github.com/vanshmaliik/Aura_Music/releases) |
-| **macOS** | `.zip` (`.app`) | [Download Release](https://github.com/vanshmaliik/Aura_Music/releases) |
-| **Linux** | `.tar.gz` | [Download Release](https://github.com/vanshmaliik/Aura_Music/releases) |
+| **Android** | `.apk` | [Download Release](https://github.com/vanshmaliik/VYNYY/releases) |
+| **iOS** | `.ipa` | [Download Release](https://github.com/vanshmaliik/VYNYY/releases) |
+| **Windows** | `.zip` (`.exe`) | [Download Release](https://github.com/vanshmaliik/VYNYY/releases) |
+| **macOS** | `.zip` (`.app`) | [Download Release](https://github.com/vanshmaliik/VYNYY/releases) |
+| **Linux** | `.tar.gz` | [Download Release](https://github.com/vanshmaliik/VYNYY/releases) |
 
 ---
 
@@ -87,7 +82,7 @@ Pre-built binaries for all major platforms are available on the [Releases](https
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/vanshmaliik/Aura_Music.git
+git clone https://github.com/vanshmaliik/VYNYY.git
 cd Aura_Music
 flutter pub get
 ```

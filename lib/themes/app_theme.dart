@@ -3,25 +3,26 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Brand Accents
-  static const Color blueAccent = Color(0xFF6366F1); // Vibrant Electric Indigo / Blue
-  static const Color limeAccent = Color(0xFFB8E11B); // VYNL Signature Neon Lime
-  static const Color goldAccent = Color(0xFF6366F1); // Default blueish accent
-  static const Color goldLight = Color(0xFF93C5FD);  // Muted sky-blue
+  // Brand Accents - Modern Light Bluish Palette
+  static const Color blueAccent = Color(0xFF38BDF8); // Vibrant Light Sky Blue (Electric Cerulean)
+  static const Color lightBlueAccent = Color(0xFF60A5FA); // Soft Light Blue
+  static const Color limeAccent = Color(0xFF38BDF8); // VYNL Signature Accent (Light Bluish)
+  static const Color goldAccent = Color(0xFF38BDF8); // Default light blueish accent
+  static const Color goldLight = Color(0xFFBAE6FD);  // Soft sky-blue pastel
 
-  // Dark Theme Colors (Deep Midnight Blueish Palette from uploaded UI)
-  static const Color darkBg = Color(0xFF0C0D21);          // Midnight Navy Blue
-  static const Color darkSurface = Color(0xFF141738);     // Deep Indigo Surface
-  static const Color darkSurfaceCard = Color(0xFF1E224A); // Elevated Translucent Slate-Blue Card
-  static const Color darkTextPrimary = Color(0xFFF8FAFC); // Crisp Off-white
-  static const Color darkTextSecondary = Color(0xFF94A3B8); // Muted Slate-Blue Grey
+  // Dark Theme Colors (Deep Ocean / Slate Blueish Palette)
+  static const Color darkBg = Color(0xFF0B1120);          // Deep Slate Midnight Blue
+  static const Color darkSurface = Color(0xFF131D33);     // Translucent Oceanic Blue Surface
+  static const Color darkSurfaceCard = Color(0xFF1B2744); // Elevated Slate-Blue Card
+  static const Color darkTextPrimary = Color(0xFFF1F5F9); // Crisp Off-white
+  static const Color darkTextSecondary = Color(0xFF94A9C9); // Soft Muted Blue Grey
 
-  // Light Theme Colors
-  static const Color lightBg = Color(0xFFFAF8F5);      // Soft warm off-white/cream
-  static const Color lightSurface = Color(0xFFF3EFE9); // Slightly darker warm cream
-  static const Color lightSurfaceCard = Color(0xFFFFFFFF); // Clean paper white
-  static const Color lightTextPrimary = Color(0xFF1C1A17); // Dark brown-charcoal
-  static const Color lightTextSecondary = Color(0xFF7A756B); // Muted warm grey
+  // Light Theme Colors (Modern Light Bluish Aesthetic)
+  static const Color lightBg = Color(0xFFEEF5FB);          // Crisp Light Bluish background
+  static const Color lightSurface = Color(0xFFE0EDF8);     // Soft Light Bluish surface
+  static const Color lightSurfaceCard = Color(0xFFFFFFFF); // Clean white card with sky-blue tint
+  static const Color lightTextPrimary = Color(0xFF0F1E36); // Deep Slate Navy
+  static const Color lightTextSecondary = Color(0xFF476282); // Muted Steel Blue Grey
 
   // Roundness
   static const double cardRadius = 24.0;

@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
@@ -7,6 +9,7 @@ import 'package:just_audio/just_audio.dart';
 import '../../models/track.dart';
 import '../storage/storage_service.dart';
 import '../widget/home_widget_service.dart';
+import 'spatial_audio_service.dart';
 
 Future<AudioHandler> initAudioHandler() async {
   return await AudioService.init(
@@ -112,6 +115,17 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
         _broadcastState();
       }
     });
+
+    _playerA.androidAudioSessionIdStream.listen((sessionId) {
+      if (_activePlayer == _playerA && sessionId != null) {
+        SpatialAudioService.updateAudioSessionId(sessionId);
+      }
+    });
+    _playerB.androidAudioSessionIdStream.listen((sessionId) {
+      if (_activePlayer == _playerB && sessionId != null) {
+        SpatialAudioService.updateAudioSessionId(sessionId);
+      }
+    });
   }
 
   AudioPlayer get player => _activePlayer;
@@ -134,6 +148,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
   Future<void> play() async {
     await _ensureAudioSessionActive();
     _activePlayer.play(); // don't await, it blocks until song ends
+    SpatialAudioService.updateAudioSessionId(_activePlayer.androidAudioSessionId);
     if (_isCrossfadeActive) {
       _fadePlayer.play();
     }
@@ -221,20 +236,13 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
     'Referer': 'https://www.jiosaavn.com/',
   };
 
-  /// Dispatches tailored headers depending on whether the audio is served by JioSaavn or YouTube / CDN mirrors.
-  static Map<String, String>? _headersForUrl(String url) {
-    if (url.contains('googlevideo.com') ||
-        url.contains('youtube.com') ||
-        url.contains('youtu.be') ||
-        url.contains('piped') ||
-        url.contains('invidious')) {
-      return {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-      };
+  static Map<String, String>? _getHeadersForUrl(String url) {
+    if (kIsWeb) return null;
+    if (url.contains('saavncdn.com') || url.contains('jiosaavn.com')) {
+      return _cdnHeaders;
     }
-    return _cdnHeaders;
+    // YouTube (googlevideo.com) and other external sources fail with 403 Forbidden if JioSaavn referer is passed
+    return null;
   }
 
   /// Safely cancels any ongoing crossfade, resets volume levels and stops the fade player.
@@ -267,6 +275,12 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
   Future<void> resetForNewTrack() async {
     cancelCrossfade();
 
+    if (kIsWeb) {
+      try { await _activePlayer.stop(); } catch (_) {}
+      try { await _fadePlayer.stop(); } catch (_) {}
+      return;
+    }
+
     // CRITICAL iOS FIX: Use pause() instead of stop() for the outgoing player.
     // Calling stop() on an AVPlayer in the background can cause iOS to aggressively
     // throttle network privileges or drop the audio session, causing the newly
@@ -280,6 +294,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
 
   /// Silently buffers the audio of the upcoming track into the inactive player to eliminate load times.
   Future<void> preloadNextTrack(Track nextTrack) async {
+    if (kIsWeb) return; // Browser autoplay policies and HTML5 Audio elements do not support background preloading
     if (_preloadedTrack?.id == nextTrack.id) return; // Already preloaded
 
     try {
@@ -290,7 +305,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
       await _fadePlayer.setVolume(0.0); 
 
       if (url.startsWith('http://') || url.startsWith('https://')) {
-        await _fadePlayer.setAudioSource(AudioSource.uri(Uri.parse(url), headers: _headersForUrl(url)));
+        await _fadePlayer.setAudioSource(AudioSource.uri(Uri.parse(url), headers: _getHeadersForUrl(url)));
       } else {
         await _fadePlayer.setFilePath(url);
       }
@@ -304,13 +319,27 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
   }
 
   MediaItem _trackToMediaItem(Track track) {
+    Uri? artUri;
+    if (track.artworkUrl.isNotEmpty) {
+      if (track.artworkUrl.startsWith('http://') || track.artworkUrl.startsWith('https://')) {
+        artUri = Uri.tryParse(track.artworkUrl);
+      } else {
+        final cleanPath = track.artworkUrl.startsWith('file://')
+            ? Uri.parse(track.artworkUrl).toFilePath()
+            : track.artworkUrl;
+        if (File(cleanPath).existsSync()) {
+          artUri = Uri.file(cleanPath);
+        }
+      }
+    }
+
     return MediaItem(
       id: track.id,
       album: track.album,
       title: track.title,
       artist: track.artist,
       duration: _parseDuration(track.duration),
-      artUri: Uri.tryParse(track.artworkUrl),
+      artUri: artUri,
       extras: {
         'audioUrl': track.audioUrl,
         'genre': track.genre,
@@ -328,6 +357,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
         cur?.duration != item.duration ||
         cur?.artUri != item.artUri) {
       mediaItem.add(item);
+      HomeWidgetService.updatePlaybackState(
+        track: track,
+        isPlaying: playbackState.value.playing,
+      );
     }
   }
 
@@ -355,6 +388,33 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
 
       String url = _normalizeUrl(track.audioUrl);
 
+      if (kIsWeb) {
+        // Web: single active player, stop previous song immediately so it never keeps playing, set new source and play
+        _preloadedTrack = null;
+        try { await _activePlayer.stop(); } catch (_) {}
+        try { await _fadePlayer.stop(); } catch (_) {}
+
+        logPlaybackEvent(
+          eventName: 'SET_AUDIO_SOURCE_START_WEB',
+          currentTrackId: track.id,
+          overrideAudioSource: url,
+        );
+
+        await _activePlayer.setAudioSource(AudioSource.uri(Uri.parse(url)));
+        await _activePlayer.setVolume(1.0);
+
+        _activePlayer.play(); // DON'T AWAIT: blocks until song finishes
+        _isTrackTransitioning = false;
+        _broadcastState();
+
+        logPlaybackEvent(
+          eventName: 'PLAY_TRACK_SUCCESS_WEB',
+          currentTrackId: track.id,
+          overrideAudioSource: url,
+        );
+        return;
+      }
+
       if (_preloadedTrack?.id == track.id) {
         logPlaybackEvent(
           eventName: 'USING_PRELOADED_PLAYER', 
@@ -374,6 +434,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
         await _ensureAudioSessionActive();
 
         _activePlayer.play(); // DON'T AWAIT: it blocks until song finishes!
+        SpatialAudioService.updateAudioSessionId(_activePlayer.androidAudioSessionId);
         _preloadedTrack = null;
 
         // Clean up the old player asynchronously
@@ -397,7 +458,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
         );
 
         if (url.startsWith('http://') || url.startsWith('https://')) {
-          await _activePlayer.setAudioSource(AudioSource.uri(Uri.parse(url), headers: _headersForUrl(url)));
+          await _activePlayer.setAudioSource(AudioSource.uri(Uri.parse(url), headers: _getHeadersForUrl(url)));
         } else {
           await _activePlayer.setFilePath(url);
         }
@@ -415,6 +476,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
         await _ensureAudioSessionActive();
 
         _activePlayer.play(); // DON'T AWAIT
+        SpatialAudioService.updateAudioSessionId(_activePlayer.androidAudioSessionId);
         _isTrackTransitioning = false;
         _broadcastState();
       }
@@ -471,7 +533,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
         await incomingPlayer.stop();
         await incomingPlayer.setVolume(0.0);
         if (url.startsWith('http://') || url.startsWith('https://')) {
-          await incomingPlayer.setAudioSource(AudioSource.uri(Uri.parse(url), headers: _headersForUrl(url)));
+          await incomingPlayer.setAudioSource(AudioSource.uri(Uri.parse(url), headers: _getHeadersForUrl(url)));
         } else {
           await incomingPlayer.setFilePath(url);
         }
@@ -484,6 +546,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
       // Swap active player references — incoming is now active, outgoing is fade player
       _activePlayer = incomingPlayer;
       _fadePlayer = outgoingPlayer;
+      SpatialAudioService.updateAudioSessionId(_activePlayer.androidAudioSessionId);
       _preloadedTrack = null;
       _isCrossfadeActive = true;
 
@@ -582,7 +645,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
       String url = _normalizeUrl(track.audioUrl);
 
       if (url.startsWith('http://') || url.startsWith('https://')) {
-        await _activePlayer.setAudioSource(AudioSource.uri(Uri.parse(url), headers: _headersForUrl(url)));
+        await _activePlayer.setAudioSource(AudioSource.uri(Uri.parse(url), headers: _getHeadersForUrl(url)));
       } else {
         await _activePlayer.setFilePath(url);
       }
@@ -622,6 +685,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
   // ── AudioSession / App Lifecycle ──────────────────────────────
 
   Future<void> _ensureAudioSessionActive() async {
+    if (kIsWeb) return;
     try {
       final session = await AudioSession.instance;
       final success = await session.setActive(true);
@@ -645,6 +709,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
   }
 
   Future<void> _initAudioSession() async {
+    if (kIsWeb) return;
     try {
       final session = await AudioSession.instance;
 
@@ -818,6 +883,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler, Wi
           genre: '',
         );
         HomeWidgetService.updatePlaybackState(track: t, isPlaying: isPlaying);
+      } else {
+        HomeWidgetService.updatePlaybackState(track: null, isPlaying: false);
       }
     } catch (_) {}
   }
