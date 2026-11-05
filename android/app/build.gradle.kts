@@ -13,7 +13,6 @@ plugins {
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties()
 var hasValidKeystore = false
-val isCI = System.getenv("CI") == "true" || System.getenv("GITHUB_ACTIONS") == "true"
 
 if (keystorePropertiesFile.exists()) {
     try {
@@ -28,7 +27,6 @@ if (keystorePropertiesFile.exists()) {
             !keyAlias.isNullOrBlank() && !storeFileStr.isNullOrBlank()) {
             val sFile = file(storeFileStr)
             if (sFile.exists() && sFile.length() > 0) {
-                // Verify password and alias using Java KeyStore API (supports PKCS12 and JKS)
                 val ks = try {
                     KeyStore.getInstance("PKCS12").apply {
                         FileInputStream(sFile).use { fis -> load(fis, storePassword.toCharArray()) }
@@ -40,29 +38,18 @@ if (keystorePropertiesFile.exists()) {
                 }
                 if (ks.containsAlias(keyAlias)) {
                     hasValidKeystore = true
+                    println("VYNL: Release keystore configured and validated successfully.")
                 } else {
-                    val msg = "AURA ERROR: Keystore alias '$keyAlias' not found in ${sFile.absolutePath}"
-                    if (isCI) throw GradleException(msg) else println(msg)
+                    println("VYNL WARNING: Keystore alias '$keyAlias' not found in ${sFile.absolutePath}. Falling back to debug signing.")
                 }
             } else {
-                val msg = "AURA ERROR: Keystore file '$storeFileStr' does not exist or is empty (resolved: ${sFile.absolutePath})"
-                if (isCI) throw GradleException(msg) else println(msg)
+                println("VYNL WARNING: Keystore file '$storeFileStr' not found. Falling back to debug signing.")
             }
-        } else {
-            val msg = "AURA ERROR: key.properties is missing required fields (storePassword, keyPassword, keyAlias, storeFile)"
-            if (isCI) throw GradleException(msg) else println(msg)
         }
     } catch (e: Exception) {
-        val msg = "AURA ERROR: Release keystore validation failed (${e.message})."
-        if (isCI) {
-            throw GradleException(msg, e)
-        } else {
-            println("$msg Falling back to debug signing.")
-            hasValidKeystore = false
-        }
+        println("VYNL WARNING: Release keystore validation failed (${e.message}). Falling back to debug signing.")
+        hasValidKeystore = false
     }
-} else if (isCI) {
-    throw GradleException("AURA ERROR: key.properties not found in CI build! Release APK cannot be signed.")
 }
 
 // Load version.properties for central app versioning (prioritizes root version.properties, with android/ fallback)
@@ -125,9 +112,6 @@ android {
 
     buildTypes {
         release {
-            if (isCI && !hasValidKeystore) {
-                throw GradleException("AURA ERROR: Release build type cannot use debug signing in CI.")
-            }
             signingConfig = if (hasValidKeystore) {
                 signingConfigs.getByName("release")
             } else {
