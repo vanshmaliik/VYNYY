@@ -1,0 +1,63 @@
+name: iOS-ipa-build-new
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: 🎉 iOS Build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load Version Properties
+        run: |
+          grep -v '^#' version.properties | grep '=' >> $GITHUB_ENV
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Setup Dependencies
+        run: flutter pub get
+
+      - name: Create .env File from Secrets
+        run: |
+          touch .env
+          echo "GROQ_KEY=${{ secrets.GROQ_KEY }}" >> .env
+          echo "GROQ_KEY_2=${{ secrets.GROQ_KEY_2 }}" >> .env
+          echo "GEMINI_KEY=${{ secrets.GEMINI_KEY }}" >> .env
+          echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS || 'aura' }}" >> .env
+          echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD || '?' }}" >> .env
+          echo "ANDROID_STORE_PASSWORD=${{ secrets.ANDROID_STORE_PASSWORD || '?' }}" >> .env
+          echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS || 'aura' }}" >> $GITHUB_ENV
+          echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD || '?' }}" >> $GITHUB_ENV
+          echo "ANDROID_STORE_PASSWORD=${{ secrets.ANDROID_STORE_PASSWORD || '?' }}" >> $GITHUB_ENV
+
+      - name: Build iOS Release App (Unsigned)
+        run: |
+          flutter build ios --release --no-codesign --no-tree-shake-icons \
+            --build-name=${{ env.VERSION_NAME }} \
+            --build-number=${{ env.VERSION_CODE }} \
+            --dart-define=GROQ_KEY=${{ secrets.GROQ_KEY }} \
+            --dart-define=GROQ_KEY_2=${{ secrets.GROQ_KEY_2 }} \
+            --dart-define=GEMINI_KEY=${{ secrets.GEMINI_KEY }}
+
+      - name: Package IPA from Runner.app
+        run: |
+          mkdir -p Payload
+          cp -RL "build/ios/iphoneos/Runner.app" Payload/
+          echo "--- Payload size after copy ---"
+          du -sh Payload
+          ditto -c -k --keepParent Payload FlutterIpaExport.ipa
+          echo "--- Final IPA size ---"
+          ls -lh FlutterIpaExport.ipa
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: FlutterIpaExport.ipa
+          tag: ${{ env.RELEASE_TAG }}
+          overwrite: true
+          body: "${{ env.RELEASE_TAG }} iOS release build"
